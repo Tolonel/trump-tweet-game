@@ -4,19 +4,24 @@ import json
 import os
 import time
 
-# --- Load Tweet Data from tweets.json file ---
+# --- Load Tweet Data ---
 def load_tweets(path="tweets.json"):
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     else:
-        st.error("tweets.json not found. Please create it with a list of tweet pairs.")
+        st.error("tweets.json not found.")
         return []
 
 tweet_data = load_tweets()
 
-# --- Fake Twitter-style tweet card UI ---
-def render_fake_tweet(tweet_text):
+# --- Page Config ---
+st.set_page_config(page_title="Trump Tweet Game", page_icon="🇺🇸", layout="centered")
+st.title("🇺🇸 Trump Tweet Game")
+st.subheader("Can you guess which tweet is real?")
+
+# --- Tweet Card Style ---
+def render_tweet(tweet_text):
     st.markdown(f"""
     <div style="border:1px solid #ccc; padding:16px; border-radius:10px; max-width:600px; background-color:#fff;">
         <div style="display:flex; align-items:center;">
@@ -31,72 +36,77 @@ def render_fake_tweet(tweet_text):
     </div>
     """, unsafe_allow_html=True)
 
+# --- Game Setup ---
+MAX_ROUNDS = 10
 
-# --- Page Config ---
-st.set_page_config(page_title="Trump Tweet Game", page_icon="🇺🇸", layout="centered")
-st.title("🇺🇸 Trump Tweet Game")
-st.subheader("Can you guess which tweet is real?")
-
-# --- State Management ---
 if "score" not in st.session_state:
     st.session_state.score = 0
 if "round" not in st.session_state:
     st.session_state.round = 1
-if "last_result" not in st.session_state:
-    st.session_state.last_result = ""
 if "game_over" not in st.session_state:
     st.session_state.game_over = False
+if "round_pairs" not in st.session_state:
+    pairs = tweet_data.copy()
+    random.shuffle(pairs)
+    st.session_state.round_pairs = pairs[:MAX_ROUNDS]
+if "last_result" not in st.session_state:
+    st.session_state.last_result = ""
 if "result_time" not in st.session_state:
     st.session_state.result_time = None
+if "current_pair" not in st.session_state:
+    st.session_state.current_pair = None
+if "current_mix" not in st.session_state:
+    st.session_state.current_mix = None
+if "correct_index" not in st.session_state:
+    st.session_state.correct_index = None
 
-# --- Game Logic ---
-def get_random_pair():
-    if not tweet_data:
-        return ["No tweets loaded.", "Please check tweets.json"], 0
-    pair = random.choice(tweet_data)
-    mix = random.random() > 0.5
-    tweets = [pair["real"], pair["fake"]] if mix else [pair["fake"], pair["real"]]
-    correct_index = 0 if mix else 1
-    return tweets, correct_index
-
-# --- Check for game over ---
-MAX_ROUNDS = 10
+# --- Game Over ---
 if st.session_state.round > MAX_ROUNDS:
     st.session_state.game_over = True
 
-# --- Game Over Screen ---
 if st.session_state.game_over:
     st.header("🏁 Game Over!")
     st.write(f"Your final Trump Score: **{st.session_state.score} / {MAX_ROUNDS}**")
 
-    # --- Trump Score Rating ---
     accuracy = round((st.session_state.score / MAX_ROUNDS) * 100)
-
     if accuracy >= 90:
-        title = "🧠 Trump Psychic!"
+        label = "🧠 Trump Psychic!"
     elif accuracy >= 70:
-        title = "🕵️‍♂️ Tweet Whisperer"
+        label = "🕵️‍♂️ Tweet Whisperer"
     elif accuracy >= 50:
-        title = "🧐 Not Bad... But Suspicious"
+        label = "🧐 Not Bad... But Suspicious"
     else:
-        title = "🤡 Easily Fooled by Fake News"
+        label = "🤡 Easily Fooled by Fake News"
 
     st.subheader(f"Your Accuracy: {accuracy}%")
-    st.markdown(f"## {title}")
+    st.markdown(f"## {label}")
 
-    # Play again button
     if st.button("🔄 Play Again"):
         st.session_state.score = 0
         st.session_state.round = 1
+        st.session_state.game_over = False
+        st.session_state.round_pairs = random.sample(tweet_data, MAX_ROUNDS)
         st.session_state.last_result = ""
         st.session_state.result_time = None
-        st.session_state.game_over = False
+        st.session_state.current_pair = None
+        st.session_state.current_mix = None
+        st.session_state.correct_index = None
         st.rerun()
 
 else:
-    tweets, correct_index = get_random_pair()
-    st.write(f"### Round {st.session_state.round} of {MAX_ROUNDS}")
+    # Load or set up the current pair
+    if not st.session_state.current_pair:
+        pair = st.session_state.round_pairs[st.session_state.round - 1]
+        mix = random.random() > 0.5
+        tweets = [pair["real"], pair["fake"]] if mix else [pair["fake"], pair["real"]]
+        correct_index = 0 if mix else 1
+        st.session_state.current_pair = tweets
+        st.session_state.correct_index = correct_index
 
+    tweets = st.session_state.current_pair
+    correct_index = st.session_state.correct_index
+
+    st.write(f"### Round {st.session_state.round} of {MAX_ROUNDS}")
     col1, col2 = st.columns(2)
 
     with col1:
@@ -108,6 +118,7 @@ else:
                 st.session_state.last_result = "❌ Nope. Tweet 1 was fake."
             st.session_state.round += 1
             st.session_state.result_time = time.time()
+            st.session_state.current_pair = None
             st.rerun()
 
     with col2:
@@ -119,21 +130,19 @@ else:
                 st.session_state.last_result = "❌ Nope. Tweet 2 was fake."
             st.session_state.round += 1
             st.session_state.result_time = time.time()
+            st.session_state.current_pair = None
             st.rerun()
 
-    # --- Display Tweets ---
     st.write("**Tweet 1:**")
-    render_fake_tweet(tweets[0])
+    render_tweet(tweets[0])
     st.write("**Tweet 2:**")
-    render_fake_tweet(tweets[1])
+    render_tweet(tweets[1])
 
-    # --- Result Display (non-blocking) ---
     if st.session_state.last_result:
         st.success(st.session_state.last_result)
-        if st.session_state.result_time:
-            if time.time() - st.session_state.result_time > 1.5:
-                st.session_state.last_result = ""
-                st.session_state.result_time = None
-                st.rerun()
+        if st.session_state.result_time and time.time() - st.session_state.result_time > 1.5:
+            st.session_state.last_result = ""
+            st.session_state.result_time = None
+            st.rerun()
 
     st.write(f"#### Score: {st.session_state.score}")
